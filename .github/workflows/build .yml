@@ -4,22 +4,32 @@ on:
   push:
     branches: [ "main" ]
 
+# Cấp quyền cần thiết cho tính năng Deploy Pages chính chủ của GitHub
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+
+# Đảm bảo chỉ có 1 tiến trình deploy chạy tại một thời điểm
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
 
 jobs:
   build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
+      # Thay thế actions-rs bằng dtolnay/rust-toolchain (chuẩn và được duy trì)
       - name: Cài đặt Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          target: wasm32-unknown-unknown
-          override: true
+          targets: wasm32-unknown-unknown
 
       - name: Cài đặt wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
@@ -33,8 +43,12 @@ jobs:
           cp index.html deploy_folder/
           cp -r pkg deploy_folder/
 
-      - name: Deploy lên GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+      # Dùng bộ Action chính chủ do chính GitHub phát triển (100% không bị chặn chính sách)
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./deploy_folder
+          path: './deploy_folder'
+
+      - name: Deploy lên GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
