@@ -1,0 +1,40 @@
+name: Build Rust WASM and Deploy to Pages
+
+on:
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Cài đặt Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32-unknown-unknown
+          override: true
+
+      - name: Cài đặt wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Biên dịch Rust sang WASM
+        run: wasm-pack build --target web
+
+      - name: Chuẩn bị thư mục Deploy
+        run: |
+          mkdir deploy_folder
+          cp index.html deploy_folder/
+          cp -r pkg deploy_folder/
+
+      - name: Deploy lên GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./deploy_folder
