@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rust WASM Docx Parser</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        #output { background: #1e1e1e; color: #00ff00; padding: 15px; border-radius: 8px; overflow-x: auto; max-height: 500px;}
+        button, input { padding: 10px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h2>Đọc file DOCX bằng Rust WASM</h2>
+    <input type="file" id="upload" accept=".docx" />
+    <br/>
+    <pre id="output">Đang chờ file docx...</pre>
+
+    <script type="module">
+        // Import file WASM sau khi GitHub Actions build xong
+        import init, { parse_docx_to_json } from './pkg/wasm_docx_parser.js';
+
+        async function run() {
+            await init(); // Khởi tạo bộ máy WASM
+            console.log("WASM đã sẵn sàng!");
+
+            document.getElementById('upload').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    // Biến file docx thành mảng Byte
+                    const uint8Array = new Uint8Array(event.target.result);
+                    
+                    try {
+                        const startTime = performance.now();
+                        // GỌI RUST TẠI ĐÂY!
+                        const jsonResult = parse_docx_to_json(uint8Array);
+                        const endTime = performance.now();
+                        
+                        // In kết quả
+                        const parsedObj = JSON.parse(jsonResult);
+                        document.getElementById('output').textContent = 
+                            `Thời gian xử lý: ${(endTime - startTime).toFixed(2)} ms\n\n` + 
+                            JSON.stringify(parsedObj, null, 2);
+                    } catch (error) {
+                        document.getElementById('output').textContent = "LỖI RUST: " + error;
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        }
+        run();
+    </script>
+</body>
+</html>
