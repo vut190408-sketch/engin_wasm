@@ -3,7 +3,8 @@ use indexmap::IndexMap;
 
 #[derive(Serialize, Deserialize)]
 pub struct Document {
-    pub version: u32, pub blocks: Vec<Block>,
+    pub version: u32,
+    pub blocks: Vec<Block>,
     pub images: IndexMap<String, ImageMetadata>,
     pub formulas: IndexMap<String, FormulaResource>,
 }
