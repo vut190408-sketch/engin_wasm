@@ -3,55 +3,79 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rust WASM Docx Parser</title>
+    <title>DOCX Extractor WASM</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; }
-        #output { background: #1e1e1e; color: #00ff00; padding: 15px; border-radius: 8px; overflow-x: auto; max-height: 500px;}
-        button, input { padding: 10px; margin: 10px 0; }
+        body { font-family: system-ui, sans-serif; padding: 15px; background: #0f172a; color: #f8fafc; }
+        .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 15px; }
+        input[type="file"] { margin: 10px 0; width: 100%; padding: 10px; background: #334155; color: white; border-radius: 8px; border: none; }
+        #output { background: #090d16; color: #38bdf8; padding: 15px; border-radius: 8px; overflow-x: auto; max-height: 500px; font-family: monospace; white-space: pre-wrap; word-break: break-all; }
+        .error { color: #f87171 !important; }
+        .success { color: #4ade80 !important; }
     </style>
 </head>
 <body>
-    <h2>Đọc file DOCX bằng Rust WASM</h2>
-    <input type="file" id="upload" accept=".docx" />
-    <br/>
-    <pre id="output">Đang chờ file docx...</pre>
+    <div class="card">
+        <h2>DOCX Extractor WASM</h2>
+        <p id="status">⏳ Đang khởi tạo bộ máy WebAssembly...</p>
+        <input type="file" id="upload" accept=".docx" disabled />
+    </div>
+
+    <div class="card">
+        <h3>Kết quả JSON:</h3>
+        <pre id="output">Đang chờ bạn chọn file .docx...</pre>
+    </div>
 
     <script type="module">
-        // Import file WASM sau khi GitHub Actions build xong
-        import init, { parse_docx_to_json } from './pkg/wasm_docx_parser.js';
+        // Tên file JS phải khớp chính xác 100% với tên package trong Cargo.toml (docx_extractor_wasm)
+        import init, { parse_docx_to_json } from './pkg/docx_extractor_wasm.js';
 
-        async function run() {
-            await init(); // Khởi tạo bộ máy WASM
-            console.log("WASM đã sẵn sàng!");
+        const statusEl = document.getElementById('status');
+        const outputEl = document.getElementById('output');
+        const uploadEl = document.getElementById('upload');
 
-            document.getElementById('upload').addEventListener('change', function(e) {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    // Biến file docx thành mảng Byte
-                    const uint8Array = new Uint8Array(event.target.result);
-                    
-                    try {
-                        const startTime = performance.now();
-                        // GỌI RUST TẠI ĐÂY!
-                        const jsonResult = parse_docx_to_json(uint8Array);
-                        const endTime = performance.now();
-                        
-                        // In kết quả
-                        const parsedObj = JSON.parse(jsonResult);
-                        document.getElementById('output').textContent = 
-                            `Thời gian xử lý: ${(endTime - startTime).toFixed(2)} ms\n\n` + 
-                            JSON.stringify(parsedObj, null, 2);
-                    } catch (error) {
-                        document.getElementById('output').textContent = "LỖI RUST: " + error;
-                    }
-                };
-                reader.readAsArrayBuffer(file);
-            });
+        async function startWasm() {
+            try {
+                await init();
+                statusEl.textContent = "✅ WASM đã sẵn sàng! Hãy chọn file .docx";
+                statusEl.className = "success";
+                uploadEl.disabled = false;
+            } catch (err) {
+                statusEl.textContent = "❌ Lỗi khởi tạo WASM: " + err.message;
+                statusEl.className = "error";
+                outputEl.textContent = "Không thể nạp file WASM. Hãy kiểm tra xem GitHub Actions đã build xong chưa.\nChi tiết lỗi: " + err;
+            }
         }
-        run();
+
+        uploadEl.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            outputEl.textContent = "⏳ Đang phân tích file: " + file.name + "...";
+            outputEl.className = "";
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const uint8Array = new Uint8Array(event.target.result);
+                    const startTime = performance.now();
+                    
+                    // Gọi hàm Rust WASM
+                    const jsonResult = parse_docx_to_json(uint8Array);
+                    
+                    const endTime = performance.now();
+                    const duration = (endTime - startTime).toFixed(2);
+                    
+                    const parsedObj = JSON.parse(jsonResult);
+                    outputEl.textContent = `⚡ Xử lý xong trong ${duration} ms!\n\n` + JSON.stringify(parsedObj, null, 2);
+                } catch (error) {
+                    outputEl.className = "error";
+                    outputEl.textContent = "❌ Lỗi khi phân tích DOCX:\n" + error;
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        startWasm();
     </script>
 </body>
 </html>
