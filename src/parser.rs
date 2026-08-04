@@ -64,7 +64,7 @@ impl DocxParser {
         };
 
         let xml = Self::read_zip_file(&mut self.archive, "word/document.xml")
-            .ok_or("Không tìm thấy file word/document.xml")?;
+            .ok_or("Không tìm thấy file word/document.xml trong file docx")?;
 
         let mut reader = Reader::from_str(&xml);
         reader.trim_text(false);
@@ -84,7 +84,8 @@ impl DocxParser {
                     }
                     _ => (),
                 },
-                Ok(Event::Eof) => break,
+                Ok(Event::Eof) => break, // Chốt chặn chống lặp vô hạn
+                Err(e) => return Err(Box::new(e)),
                 _ => (),
             }
             buf.clear();
@@ -93,7 +94,6 @@ impl DocxParser {
         Ok(doc)
     }
 
-    // --- PARSE PARAGRAPH / HEADING / BREAKS ---
     fn parse_paragraph_or_heading(
         &mut self,
         reader: &mut Reader<&[u8]>,
@@ -147,6 +147,8 @@ impl DocxParser {
                     _ => (),
                 },
                 Ok(Event::End(ref e)) if e.name().as_ref() == b"w:p" => break,
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(Box::new(e)),
                 _ => (),
             }
             buf.clear();
@@ -180,7 +182,6 @@ impl DocxParser {
         }
     }
 
-    // --- PARSE PROPERTY CỦA PARAGRAPH (Heading & Numbering) ---
     fn parse_paragraph_properties(
         &self,
         reader: &mut Reader<&[u8]>,
@@ -220,6 +221,8 @@ impl DocxParser {
                     _ => (),
                 },
                 Ok(Event::End(ref e)) if e.name().as_ref() == b"w:pPr" => break,
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(Box::new(e)),
                 _ => (),
             }
             buf.clear();
@@ -234,7 +237,6 @@ impl DocxParser {
         Ok((heading_lvl, num_meta))
     }
 
-    // --- PARSE RUN (w:r) VÀ CÁC THUỘC TÍNH DINH DANG ---
     fn parse_run(
         &mut self,
         reader: &mut Reader<&[u8]>,
@@ -265,6 +267,8 @@ impl DocxParser {
                     _ => (),
                 },
                 Ok(Event::End(ref e)) if e.name().as_ref() == b"w:r" => break,
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(Box::new(e)),
                 _ => (),
             }
             buf.clear();
@@ -280,7 +284,6 @@ impl DocxParser {
         Ok(())
     }
 
-    // --- PARSE HYPERLINK (w:hyperlink) ---
     fn parse_hyperlink(
         &mut self,
         reader: &mut Reader<&[u8]>,
@@ -296,6 +299,8 @@ impl DocxParser {
                     self.parse_run(reader, text_acc, styles, inline_objects, doc)?;
                 }
                 Ok(Event::End(ref e)) if e.name().as_ref() == b"w:hyperlink" => break,
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(Box::new(e)),
                 _ => (),
             }
             buf.clear();
@@ -303,7 +308,6 @@ impl DocxParser {
         Ok(())
     }
 
-    // --- PARSE RUN PROPERTIES (10 loại Styles) ---
     fn parse_run_properties(&self, reader: &mut Reader<&[u8]>) -> Result<RunFormat, Box<dyn std::error::Error>> {
         let mut fmt = RunFormat::default();
         let mut buf = Vec::new();
@@ -357,6 +361,8 @@ impl DocxParser {
                     _ => (),
                 },
                 Ok(Event::End(ref e)) if e.name().as_ref() == b"w:rPr" => break,
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(Box::new(e)),
                 _ => (),
             }
             buf.clear();
@@ -364,7 +370,6 @@ impl DocxParser {
         Ok(fmt)
     }
 
-    // --- GỘP CÁC RANGE LIÊN TIẾP ĐỂ TỐI ƯU JSON ---
     fn apply_run_styles(styles: &mut StyleMap, fmt: &RunFormat, start: usize, end: usize) {
         let add_range = |ranges: &mut Vec<Range>| {
             if let Some(last) = ranges.last_mut() {
@@ -392,7 +397,6 @@ impl DocxParser {
         if let Some(ref ff) = fmt.font_family { add_val_range(&mut styles.font_family, ff.clone()); }
     }
 
-    // --- PARSE DRAWING (Anh inline vs Anchor / Floating) ---
     fn parse_drawing(
         &mut self,
         reader: &mut Reader<&[u8]>,
@@ -430,6 +434,8 @@ impl DocxParser {
                     _ => (),
                 },
                 Ok(Event::End(ref e)) if e.name().as_ref() == b"w:drawing" => break,
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(Box::new(e)),
                 _ => (),
             }
             buf.clear();
@@ -438,7 +444,7 @@ impl DocxParser {
         if !embed_rid.is_empty() {
             if let Some(target_file) = self.rels.get_target(&embed_rid).cloned() {
                 let img_id = format!("image_{}", Uuid::new_v4());
-                let width_px = cx / 9525; // Chuyển đổi từ EMU sang Pixel (96 DPI)
+                let width_px = cx / 9525;
                 let height_px = cy / 9525;
                 let aspect_ratio = if height_px > 0 { width_px as f32 / height_px as f32 } else { 1.0 };
                 
@@ -474,7 +480,6 @@ impl DocxParser {
         Ok(())
     }
 
-    // --- PARSE TABLE (Bảng, rowSpan & colSpan) ---
     fn parse_table(
         &mut self,
         reader: &mut Reader<&[u8]>,
@@ -490,6 +495,8 @@ impl DocxParser {
                     rows.push(row);
                 }
                 Ok(Event::End(ref e)) if e.name().as_ref() == b"w:tbl" => break,
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(Box::new(e)),
                 _ => (),
             }
             buf.clear();
@@ -516,6 +523,8 @@ impl DocxParser {
                     cells.push(cell);
                 }
                 Ok(Event::End(ref e)) if e.name().as_ref() == b"w:tr" => break,
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(Box::new(e)),
                 _ => (),
             }
             buf.clear();
@@ -547,7 +556,7 @@ impl DocxParser {
                     b"w:vMerge" => {
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"w:val" && attr.value.as_ref() == b"restart" {
-                                row_span = 1; // Khởi tạo ô bắt đầu gộp hàng
+                                row_span = 1;
                             }
                         }
                     }
@@ -563,6 +572,8 @@ impl DocxParser {
                     _ => (),
                 },
                 Ok(Event::End(ref e)) if e.name().as_ref() == b"w:tc" => break,
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(Box::new(e)),
                 _ => (),
             }
             buf.clear();
@@ -575,7 +586,7 @@ impl DocxParser {
         })
     }
 
-    // --- CAPTURE XML CHÍNH XÁC THEO ĐỘ SÂU (Cho OMML Formula) ---
+    // --- CAPTURE XML CHÍNH XÁC THEO ĐỘ SÂU (Chống treo vô hạn) ---
     fn capture_xml(&self, reader: &mut Reader<&[u8]>, tag: &str) -> Result<String, Box<dyn std::error::Error>> {
         let mut xml = format!("<{}>", tag);
         let mut depth = 1;
@@ -591,7 +602,13 @@ impl DocxParser {
                     depth -= 1;
                     xml.push_str(&String::from_utf8_lossy(&e.to_vec()));
                 }
+                Ok(Event::Empty(e)) => {
+                    // Xử lý các thẻ tự đóng như <m:ctrlPr/>
+                    xml.push_str(&String::from_utf8_lossy(&e.to_vec()));
+                }
                 Ok(Event::Text(t)) => xml.push_str(&t.unescape()?),
+                Ok(Event::Eof) => break, // Chốt chặn quan trọng nhất!
+                Err(e) => return Err(Box::new(e)),
                 _ => (),
             }
             buf.clear();
